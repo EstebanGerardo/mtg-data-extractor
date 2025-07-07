@@ -103,12 +103,8 @@ def find_best_offer(card_name):
             seller_name_element = offer.select_one('.seller-name a')
             seller_name = seller_name_element.text.strip() if seller_name_element else 'N/A'
 
-            country_element = offer.select_one('span.icon[data-bs-original-title^="Item location:"]')
-            if country_element:
-                country_title = country_element.get('data-bs-original-title', 'N/A')
-                country = country_title.replace('Item location:', '').strip()
-            else:
-                country = 'N/A'
+            country_span = offer.select_one('span.icon[data-bs-toggle="tooltip"][aria-label^="Item location:"]')
+            country = country_span['aria-label'].replace('Item location:', '').strip() if country_span else 'N/A'
 
             price_element = offer.select_one('.price-container, .price')
             price_text = price_element.text.strip() if price_element else "0,00 €"
