@@ -5,11 +5,15 @@ import sys
 import requests
 import time
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+import os
+
+load_dotenv() # Load environment variables from .env file
 
 # --- IMPORTANT ---
 # You need a ScraperAPI key for this script to work.
 # Sign up for a free account at https://www.scraperapi.com/ to get your key.
-API_KEY = "c9cae1f6575ed03003e74f659d1154fa"  # User-provided key
+API_KEY = os.getenv("SCRAPERAPI_KEY")
 
 # Setup logging to a file and to stderr for comprehensive diagnostics.
 logging.basicConfig(
