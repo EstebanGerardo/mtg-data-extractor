@@ -96,21 +96,19 @@ def find_best_offer(card_name):
             logging.warning("No offers found on the listings page.")
             return {"error": "No offers found for this card."}
 
-        seller_info_html = offers[0].select_one('.seller-name')
-        if seller_info_html:
-            logging.info(f"HTML of seller info for debugging: {seller_info_html.prettify()}")
-        else:
-            logging.info("Could not find '.seller-name' element for debugging.")
-
         best_offer = None
         min_total_price = float('inf')
 
         for offer in offers[:MAX_SELLERS_TO_CHECK]:
-            seller_info_element = offer.select_one('.seller-name a')
-            seller_name = seller_info_element.text.strip() if seller_info_element else "N/A"
-            
-            country_element = offer.select_one('.seller-name .fi')
-            country = country_element['class'][1].split('-')[-1].upper() if country_element else "N/A"
+            seller_name_element = offer.select_one('.seller-name a')
+            seller_name = seller_name_element.text.strip() if seller_name_element else 'N/A'
+
+            country_element = offer.select_one('span.icon[data-bs-original-title^="Item location:"]')
+            if country_element:
+                country_title = country_element.get('data-bs-original-title', 'N/A')
+                country = country_title.replace('Item location:', '').strip()
+            else:
+                country = 'N/A'
 
             price_element = offer.select_one('.price-container, .price')
             price_text = price_element.text.strip() if price_element else "0,00 €"
