@@ -1,10 +1,20 @@
 import streamlit as st
 import pandas as pd
+from card_fetcher import get_top_commander_cards, get_currency_rates, get_card_prices
 import logging
-from card_fetcher import get_top_commander_cards
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging to write to scraper.log
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("scraper.log"),
+        logging.StreamHandler() # Also print to console
+    ],
+    force=True # Override any existing Streamlit logging configurations
+)
+
+st.set_page_config(page_title="Card Arbitrage Finder", layout="wide")
 
 # Initialize session state
 if 'card_list' not in st.session_state:

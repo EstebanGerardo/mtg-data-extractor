@@ -14,7 +14,8 @@ def get_top_commander_cards(num_cards: int):
         response = requests.get(EDHREC_URL, headers={'User-Agent': 'Mozilla/5.0'})
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        card_items = soup.select('div.card-grid-item a.card-grid-item-card')
+        # The new selector for card names on EDHREC as of recent changes.
+        card_items = soup.select('div.Card_name__1H-3c')
         if not card_items:
             logging.error("Could not find card items on EDHREC page.")
             return []
@@ -23,6 +24,9 @@ def get_top_commander_cards(num_cards: int):
         return card_names
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to fetch data from EDHREC: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while scraping EDHREC: {e}")
         return []
 
 def get_currency_rates():
