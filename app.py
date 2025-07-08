@@ -1,95 +1,85 @@
 import streamlit as st
 import pandas as pd
 import logging
-import subprocess
-import json
-import sys
+from card_fetcher import get_top_commander_cards
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Constants ---
-MAX_SELLERS_TO_CHECK = 15 # This is now for display purposes, actual value is in scraper.py
+# Initialize session state
+if 'card_list' not in st.session_state:
+    st.session_state.card_list = []
+if 'step' not in st.session_state:
+    st.session_state.step = 1
 
-# --- Main Function ---
+# --- UI ---
+st.title("Card Arbitrage Finder")
+st.markdown("This tool helps you find price differences for Magic: The Gathering cards between Cardmarket (Europe) and Card Kingdom (North America), converted to Chilean Pesos (CLP).")
 
-def find_best_offer(card_name):
-    """
-    Calls the scraper.py script as a subprocess to find the best offer.
-    This avoids asyncio event loop conflicts with Streamlit.
-    """
-    # Ensure we are using the python executable from the virtual environment
-    python_executable = sys.executable
+# --- Step 1: Get Top Cards ---
+st.header("Step 1: Get Top Commander Cards")
+num_cards = st.number_input("How many top cards do you want to fetch from EDHREC?", min_value=10, max_value=200, value=50, step=10)
+
+if st.button("Get Top Cards"):
+    with st.spinner("Fetching card list from EDHREC..."):
+        st.session_state.card_list = get_top_commander_cards(num_cards)
     
-    command = [python_executable, "scraper.py", card_name]
-    
-    try:
-        logging.info(f"Running command: {' '.join(command)}")
-        process = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=True, # Raises CalledProcessError for non-zero exit codes
-            encoding='utf-8'
-        )
-        
-        logging.info(f"Scraper stdout: {process.stdout}")
-        # The last line of stdout should be our JSON result
-        last_line = process.stdout.strip().split('\n')[-1]
-        result = json.loads(last_line)
-
-        if result.get("error"):
-            return result["error"]
-        return result
-
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Scraper script failed with exit code {e.returncode}")
-        logging.error(f"Stderr: {e.stderr}")
-        return f"The scraper script failed. Check logs for details. Stderr: {e.stderr}"
-    except json.JSONDecodeError as e:
-        logging.error(f"Failed to decode JSON from scraper: {e}")
-        return "The scraper script returned invalid data."
-    except Exception as e:
-        logging.error("An unexpected error occurred while running the scraper", exc_info=True)
-        return f"An unexpected error occurred: {e}"
-
-
-# --- Streamlit UI ---
-st.title("Automated Cardmarket Seller Finder")
-st.markdown("**Phase 1: Single Card MVP**")
-st.write("Enter a Magic: The Gathering card name to find the seller with the lowest total price (card + shipping) to Spain.")
-
-card_name_input = st.text_input("Enter Card Name:", placeholder="e.g., Sol Ring, Æther Vial")
-
-if st.button("Find Best Deal"):
-    if card_name_input:
-        with st.spinner('Querying Cardmarket... this may take a moment.'):
-            result = find_best_offer(card_name_input)
-
-        st.markdown("---_---") # Separator
-
-        if isinstance(result, dict):
-            st.success("**Found the best offer!**")
-            st.markdown(f"**Seller:** `{result['seller']}`")
-            st.markdown(f"**Card Price:** `{result['card_price']:.2f} €`")
-            st.markdown(f"**Shipping Price:** `{result['shipping_price']:.2f} €`")
-            st.markdown(f"### **Total Price: `{result['total_price']:.2f} €`**")
-            st.markdown(f"<a href='{result['link']}' target='_blank'>Go to Seller's Offer Page</a>", unsafe_allow_html=True)
-        else:
-            st.error(result)
+    if st.session_state.card_list:
+        st.success(f"Successfully fetched {len(st.session_state.card_list)} cards!")
+        st.session_state.step = 2
     else:
-        st.warning("Please enter a card name.")
+        st.error("Failed to fetch card list. EDHREC might be temporarily unavailable or the page structure has changed. Please try again later.")
 
-st.sidebar.header("Project Info")
-st.sidebar.info(
-    "This app automates finding the best deal on Cardmarket for a single card shipped to Spain."
-    "It is based on the requirements from the PRD."
-)
-st.sidebar.header("Scope Limitations (MVP)")
-st.sidebar.warning(
-    f"- Single card only\n"
-    f"- No filters (condition, language, etc.)\n"
-    f"- Only Professional & Power Sellers\n"
-    f"- Assumes shipping to Barcelona, Spain\n"
-    f"- Checks top {MAX_SELLERS_TO_CHECK} sellers for performance"
-)
+# --- Step 2: Find Arbitrage Opportunities ---
+if st.session_state.step == 2:
+    st.markdown("---")
+    st.header("Step 2: Price Analysis")
+
+    with st.expander("View Fetched Card List"):
+        st.write(st.session_state.card_list)
+
+    if st.button("Find Arbitrage Opportunities"):
+        with st.spinner("Fetching currency exchange rates..."):
+            usd_to_clp, eur_to_clp = get_currency_rates()
+        
+        if not usd_to_clp or not eur_to_clp:
+            st.error("Could not fetch currency rates. Please try again later.")
+        else:
+            st.success(f"Current Rates: 1 USD = {usd_to_clp:.2f} CLP, 1 EUR = {eur_to_clp:.2f} CLP")
+            results = []
+            progress_bar = st.progress(0)
+            total_cards = len(st.session_state.card_list)
+
+            for i, card_name in enumerate(st.session_state.card_list):
+                ck_price_usd, cm_price_eur = get_card_prices(card_name)
+                
+                if ck_price_usd and cm_price_eur:
+                    ck_price_clp = float(ck_price_usd) * usd_to_clp
+                    cm_price_clp = float(cm_price_eur) * eur_to_clp
+                    difference = ck_price_clp - cm_price_clp
+                    
+                    results.append({
+                        "Card Name": card_name,
+                        "Card Kingdom Price (CLP)": ck_price_clp,
+                        "Cardmarket Price (CLP)": cm_price_clp,
+                        "Difference (CLP)": difference
+                    })
+                progress_bar.progress((i + 1) / total_cards)
+
+            if results:
+                df = pd.DataFrame(results)
+                df_sorted = df.sort_values(by="Difference (CLP)", ascending=False).reset_index(drop=True)
+
+                # Color-coding for the 'Difference (CLP)' column
+                def color_difference(val):
+                    color = 'green' if val > 0 else 'red' if val < 0 else 'white'
+                    return f'color: {color}'
+
+                st.dataframe(df_sorted.style.applymap(color_difference, subset=['Difference (CLP)'])
+                                       .format({
+                                           'Card Kingdom Price (CLP)': '{:,.0f}',
+                                           'Cardmarket Price (CLP)': '{:,.0f}',
+                                           'Difference (CLP)': '{:,.0f}'
+                                       }), height=500)
+            else:
+                st.warning("Could not retrieve price data for any of the cards.")
