@@ -3,28 +3,23 @@ from unittest.mock import Mock
 import requests
 from card_fetcher import get_top_commander_cards, get_currency_rates, get_card_prices
 
-# Mock data for EDHREC
-EDHREC_HTML_SUCCESS = '''
-<html>
-    <body>
-        <div class="card-grid-item">
-            <a class="card-grid-item-card">Sol Ring</a>
-        </div>
-        <div class="card-grid-item">
-            <a class="card-grid-item-card">Arcane Signet</a>
-        </div>
-    </body>
-</html>
-'''
+# Mock data for EDHREC JSON
+EDHREC_JSON_SUCCESS = {
+    "cardlist": [
+        {"name": "Sol Ring"},
+        {"name": "Arcane Signet"},
+        {"name": "Command Tower"}
+    ]
+}
 
-# Mock data for Frankfurter.app
+# Mock data for Frankfurter.app (USD base)
 CURRENCY_JSON_SUCCESS = {
     "amount": 1.0,
-    "base": "EUR",
+    "base": "USD",
     "date": "2023-11-10",
     "rates": {
-        "CLP": 950.0,
-        "USD": 1.07
+        "CLP": 930.0,
+        "EUR": 0.93
     }
 }
 
@@ -38,15 +33,23 @@ SCRYFALL_JSON_SUCCESS = {
 
 # --- Tests for get_top_commander_cards ---
 
-def test_get_top_commander_cards_success(mocker):
-    """Test successful scraping of card names from EDHREC."""
+@pytest.mark.parametrize("num_cards, expected_cards", [
+    (3, ["Sol Ring", "Arcane Signet", "Command Tower"]),
+    (2, ["Sol Ring", "Arcane Signet"]),
+    (1, ["Sol Ring"])
+])
+def test_get_top_commander_cards_success(mocker, num_cards, expected_cards):
+    """Test successful fetching of card names from EDHREC JSON."""
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_response.content = EDHREC_HTML_SUCCESS.encode('utf-8')
+    mock_response.json.return_value = EDHREC_JSON_SUCCESS
     mocker.patch('requests.get', return_value=mock_response)
     
-    cards = get_top_commander_cards(2)
-    assert cards == ["Sol Ring", "Arcane Signet"]
+    cards = get_top_commander_cards(num_cards)
+    assert cards == expected_cards
+    # Specifically check the user's request for N=3
+    if num_cards == 3:
+        assert len(cards) == 3
 
 def test_get_top_commander_cards_failure(mocker):
     """Test failure in fetching from EDHREC."""
@@ -65,8 +68,8 @@ def test_get_currency_rates_success(mocker):
     mocker.patch('requests.get', return_value=mock_response)
     
     usd_to_clp, eur_to_clp = get_currency_rates()
-    assert eur_to_clp == 950.0
-    assert usd_to_clp == pytest.approx((1 / 1.07) * 950.0)
+    assert usd_to_clp == 930.0
+    assert eur_to_clp == pytest.approx((1 / 0.93) * 930.0)
 
 def test_get_currency_rates_failure(mocker):
     """Test failure in fetching currency rates."""
