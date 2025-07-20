@@ -1,4 +1,9 @@
 streamlit
 requests
+pandas
+playwright
+playwright-stealth
 beautifulsoup4
-lxml
+python-dotenv==0.21.1
+pytest==7.4.0
+pytest-mock==3.11.1
