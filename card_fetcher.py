@@ -8,7 +8,7 @@ import random
 
 EDHREC_BASE_URL = 'https://edhrec.com/top'
 SCRYFALL_API_URL = 'https://api.scryfall.com/cards/named'
-CURRENCY_API_URL = 'https://api.frankfurter.app/latest?from=USD&to=CLP,EUR'
+CURRENCY_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD'
 
 # User agents for rotation
 USER_AGENTS = [
@@ -163,24 +163,30 @@ def get_top_commander_cards(time_period="week", num_cards=100):
 def get_currency_rates():
     """Fetches currency conversion rates for USD and EUR to CLP."""
     try:
-        logging.info("Fetching currency rates from Frankfurter.app")
-        response = requests.get(CURRENCY_API_URL)
+        logging.info("Fetching currency rates from exchangerate-api.com")
+        response = requests.get(CURRENCY_API_URL, timeout=10)
         response.raise_for_status()
-        rates = response.json().get('rates', {})
-        # The API is called with from=USD, so rates are per 1 USD.
+        data = response.json()
+        rates = data.get('rates', {})
+        
+        # The API provides rates from USD to other currencies
         usd_to_clp = rates.get('CLP')
-        usd_to_eur = rates.get('EUR') # This is EUR per 1 USD
+        usd_to_eur = rates.get('EUR')
 
         if not usd_to_clp or not usd_to_eur:
             logging.error("Could not retrieve all required currency rates from API response.")
+            logging.error(f"Available rates: {list(rates.keys())[:10]}...")  # Show first 10 available rates
             return None, None
             
         # To get EUR to CLP, we convert EUR -> USD -> CLP
         eur_to_clp = (1 / usd_to_eur) * usd_to_clp
-        logging.info(f"Rates fetched: 1 EUR = {eur_to_clp} CLP, 1 USD = {usd_to_clp} CLP")
+        logging.info(f"Rates fetched: 1 USD = {usd_to_clp} CLP, 1 EUR = {eur_to_clp:.2f} CLP")
         return usd_to_clp, eur_to_clp
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to fetch currency rates: {e}")
+        return None, None
+    except Exception as e:
+        logging.error(f"Error processing currency rates: {e}")
         return None, None
 
 def get_card_prices(card_name: str):
