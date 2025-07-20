@@ -31,9 +31,9 @@ def get_top_commander_cards_direct(time_period="week", num_cards=100):
         
         # Map time periods to EDHREC URL paths
         time_map = {
-            "week": "",  # Default is week
+            "week": "/week",
             "month": "/month",
-            "2years": "/2years",
+            "2years": "",  # Last 2 years uses base URL (default)
             "all": "/all"
         }
         

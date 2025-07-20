@@ -38,7 +38,7 @@ st.header("Step 1: Get Top Commander Cards")
 
 time_period_option = st.radio(
     "Select time period:",
-    ('Week', 'Month', 'All Time'),
+    ('Week', 'Month', 'Last 2 years'),
     horizontal=True,
 )
 
@@ -50,8 +50,8 @@ if st.button("Get Top Cards"):
     with st.spinner("Fetching top cards from EDHREC..."):
         try:
             time_period = time_period_option.lower().replace(' ', '_')
-            if time_period == 'all_time':
-                time_period = 'all'
+            if time_period == 'last_2_years':
+                time_period = '2years'
             st.session_state.card_data = get_top_commander_cards(time_period=time_period, num_cards=num_cards)
         except Exception as e:
             st.session_state.card_data = []
@@ -144,10 +144,7 @@ if st.session_state.card_data:
             st.dataframe(df_cards, use_container_width=True)
 elif st.session_state.fetch_error:
     st.error(f"Failed to fetch card list. Error: {st.session_state.fetch_error}")
-else:
-    st.error("Failed to fetch card list. An unknown error occurred.")
-    st.session_state.results = None # Clear previous results
-    st.session_state.fetch_error = None
+# No else block - don't show error on first load when no fetch has been attempted
 
 # Step 2: Analyze Prices (moved outside conditional)
 st.header("Step 2: Analyze Prices")
