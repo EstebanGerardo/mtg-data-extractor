@@ -65,44 +65,81 @@ if st.button("Get Top Cards"):
         
         with st.expander("View Fetched Card List"):
             # Create a DataFrame to display the cards with their prices and deck statistics
-            df_cards = pd.DataFrame(st.session_state.card_data)
+            display_data = []
+            
+            for card in st.session_state.card_data:
+                # Extract data from the new nested structure
+                card_info = {
+                    'name': card['name'],
+                    'deck_count': card.get('deck_count', 'N/A'),
+                    'deck_percentage': card.get('deck_percentage', 'N/A'),
+                    'total_decks': card.get('total_decks', 'N/A'),
+                    'usd_price': card.get('usd_price', 'N/A'),
+                    'eur_price': card.get('eur_price', 'N/A')
+                }
+                
+                # Handle nested edhrec_data if present
+                if 'edhrec_data' in card:
+                    edhrec = card['edhrec_data']
+                    card_info.update({
+                        'deck_count': edhrec.get('deck_count', card_info['deck_count']),
+                        'deck_percentage': edhrec.get('deck_percentage', card_info['deck_percentage']),
+                        'total_decks': edhrec.get('total_decks', card_info['total_decks'])
+                    })
+                
+                # Handle nested scryfall_prices if present
+                if 'scryfall_prices' in card:
+                    scryfall = card['scryfall_prices']
+                    card_info.update({
+                        'usd_price': scryfall.get('usd', card_info['usd_price']),
+                        'eur_price': scryfall.get('eur', card_info['eur_price'])
+                    })
+                
+                display_data.append(card_info)
+            
+            df_cards = pd.DataFrame(display_data)
             
             # Format the DataFrame for better display
             if not df_cards.empty:
                 # Rename columns for better readability
                 column_renames = {
                     "name": "Card Name",
-                    "cardkingdom_price": "CardKingdom Price",
-                    "tcgplayer_price": "TCGplayer Price",
-                    "starcitygames_price": "StarCityGames Price",
                     "deck_count": "# of Decks",
                     "deck_percentage": "% of Decks",
-                    "total_decks": "Total Decks"
+                    "total_decks": "Total Decks",
+                    "usd_price": "USD Price",
+                    "eur_price": "EUR Price"
                 }
                 
-                # Apply column renames where columns exist
-                for old_col, new_col in column_renames.items():
-                    if old_col in df_cards.columns:
-                        df_cards = df_cards.rename(columns={old_col: new_col})
+                # Apply column renames
+                df_cards = df_cards.rename(columns=column_renames)
                 
                 # Add a "Popularity Rank" column based on the order
                 df_cards.insert(0, "Rank", range(1, len(df_cards) + 1))
                 
-                # Format deck count and total decks as integers if they're numeric
-                for col in df_cards.columns:
-                    if col not in ["Card Name"]:
-                        # Handle numeric conversion with proper exception handling
-                        try:
-                            df_cards[col] = pd.to_numeric(df_cards[col])
-                            # Format numbers with commas if conversion succeeded
-                            df_cards[col] = df_cards[col].apply(lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and not pd.isna(x) else x)
-                        except (ValueError, TypeError):
-                            # Keep as is if conversion fails
-                            pass
+                # Format price columns
+                if "USD Price" in df_cards.columns:
+                    df_cards["USD Price"] = df_cards["USD Price"].apply(
+                        lambda x: f"${x:.2f}" if isinstance(x, (int, float)) and x is not None else "N/A"
+                    )
                 
-                # Add % symbol to percentage column if it doesn't already have it
+                if "EUR Price" in df_cards.columns:
+                    df_cards["EUR Price"] = df_cards["EUR Price"].apply(
+                        lambda x: f"€{x:.2f}" if isinstance(x, (int, float)) and x is not None else "N/A"
+                    )
+                
+                # Format deck count and total decks as integers with commas
+                for col in ["# of Decks", "Total Decks"]:
+                    if col in df_cards.columns:
+                        df_cards[col] = df_cards[col].apply(
+                            lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and x is not None else "N/A"
+                        )
+                
+                # Format percentage column
                 if "% of Decks" in df_cards.columns:
-                    df_cards["% of Decks"] = df_cards["% of Decks"].apply(lambda x: f"{x}%" if isinstance(x, str) and not x.endswith('%') and x != "N/A" else x)
+                    df_cards["% of Decks"] = df_cards["% of Decks"].apply(
+                        lambda x: f"{x}%" if isinstance(x, (int, float)) and x is not None else "N/A"
+                    )
             
             # Display the formatted DataFrame
             st.dataframe(df_cards, use_container_width=True)
