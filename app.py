@@ -4,6 +4,11 @@ import streamlit as st
 import pandas as pd
 import time
 from card_fetcher import get_top_commander_cards, get_currency_rates, get_card_prices
+from database import init_database, get_database_stats
+from watchlist_manager import (
+    display_card_selection_interface, display_watchlist_overview, 
+    get_watchlist_summary, update_watchlist_prices
+)
 import logging
 
 # Configure logging
@@ -17,7 +22,14 @@ logging.basicConfig(
     force=True
 )
 
-st.set_page_config(page_title="Card Arbitrage Finder", layout="wide")
+st.set_page_config(page_title="MTG Card Arbitrage Finder", layout="wide")
+
+# Initialize database
+try:
+    init_database()
+except Exception as e:
+    st.error(f"Failed to initialize database: {e}")
+    st.stop()
 
 # Initialize session state
 if 'card_data' not in st.session_state:
@@ -26,15 +38,52 @@ if 'results' not in st.session_state:
     st.session_state.results = None
 if 'fetch_error' not in st.session_state:
     st.session_state.fetch_error = None
+if 'extraction_metadata' not in st.session_state:
+    st.session_state.extraction_metadata = {}
+if 'selected_cards' not in st.session_state:
+    st.session_state.selected_cards = []
+if 'show_selection' not in st.session_state:
+    st.session_state.show_selection = False
 
 # --- UI ---
 st.title("MTG Card Arbitrage Finder")
 st.markdown("""
-This tool finds price differences for top EDHREC commander cards between Card Kingdom (USD) and Scryfall (representing Cardmarket in EUR), converting prices to Chilean Pesos (CLP).
+This tool helps you find and track MTG card arbitrage opportunities through a 3-step process:
+1. **Extract & Analyze**: Get top EDHREC commander cards and analyze price differences
+2. **Select Cards**: Choose which cards to add to your personal watchlist for tracking
+3. **Track Over Time**: Monitor your selected cards and analyze historical price trends
 """)
 
-# --- Step 1: Get Top Cards ---
-st.header("Step 1: Get Top Commander Cards")
+# Display watchlist summary
+watchlist_summary = get_watchlist_summary()
+if watchlist_summary['total_cards'] > 0:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Watchlist Cards", watchlist_summary['total_cards'])
+    with col2:
+        st.metric("Good Opportunities", watchlist_summary['good_opportunities'])
+    with col3:
+        st.metric("Added Today", watchlist_summary['recent_additions'])
+
+# --- PERSISTENT STEP HEADERS ---
+st.markdown("## 🎯 MTG Card Arbitrage Workflow")
+
+# Step 1 Header - Always visible
+step1_status = "✅" if st.session_state.card_data else "⏳"
+st.markdown(f"### {step1_status} Step 1: Fetch Top Commander Cards")
+
+# Step 2 Header - Always visible
+step2_status = "✅" if st.session_state.results is not None else "⏳" if st.session_state.card_data else "⏸️"
+st.markdown(f"### {step2_status} Step 2: Analyze Prices & Select Cards")
+
+# Step 3 Header - Always visible
+step3_status = "✅" if st.session_state.get('selected_cards') else "⏳" if st.session_state.results is not None else "⏸️"
+st.markdown(f"### {step3_status} Step 3: Watchlist Overview")
+
+st.divider()
+
+# --- Step 1 Content ---
+st.subheader("📊 Configure Card Extraction")
 
 time_period_option = st.radio(
     "Select time period:",
@@ -47,12 +96,23 @@ num_cards = st.number_input("How many top cards do you want to fetch?", min_valu
 if st.button("Get Top Cards"):
     st.session_state.results = None # Clear previous results
     st.session_state.fetch_error = None
+    st.session_state.show_selection = False # Reset selection interface
+    st.session_state.selected_cards = [] # Clear previous selections
+    
     with st.spinner("Fetching top cards from EDHREC..."):
         try:
             time_period = time_period_option.lower().replace(' ', '_')
             if time_period == 'last_2_years':
                 time_period = '2years'
             st.session_state.card_data = get_top_commander_cards(time_period=time_period, num_cards=num_cards)
+            
+            # Store extraction metadata
+            st.session_state.extraction_metadata = {
+                'time_period': time_period,
+                'num_cards_extracted': len(st.session_state.card_data),
+                'extraction_date': pd.Timestamp.now().isoformat()
+            }
+            
         except Exception as e:
             st.session_state.card_data = []
             st.session_state.fetch_error = str(e)
@@ -146,135 +206,146 @@ elif st.session_state.fetch_error:
     st.error(f"Failed to fetch card list. Error: {st.session_state.fetch_error}")
 # No else block - don't show error on first load when no fetch has been attempted
 
-# Step 2: Analyze Prices (moved outside conditional)
-st.header("Step 2: Analyze Prices")
+st.divider()
+
+# --- Step 2 Content ---
+st.subheader("💰 Price Analysis & Card Selection")
 
 # Show current card status
 if st.session_state.card_data:
-    st.info(f"📊 Ready to analyze {len(st.session_state.card_data)} fetched cards")
+    st.info(f"📆 Ready to analyze {len(st.session_state.card_data)} fetched cards")
 else:
     st.warning("⚠️ No cards fetched yet. Please fetch cards first.")
 
+# CLP Threshold Configuration
+st.subheader("💰 Opportunity Threshold")
+clp_threshold = st.number_input(
+    "CLP threshold for opportunities (only EU < USD):",
+    min_value=0,
+    value=1000,
+    step=100,
+    help="Minimum CLP difference to consider as an opportunity. Only cards where EU price is less than USD price will be considered."
+)
+
 if st.button("Analyze Prices"):
-        st.success("🎯 Button clicked! Starting analysis...")
+    st.success("🎯 Button clicked! Starting analysis...")
+    
+    # Validate card data exists
+    if not st.session_state.card_data:
+        st.error("❌ No card data available. Please fetch cards first.")
+    else:
+        st.info(f"📆 Analyzing {len(st.session_state.card_data)} cards...")
         
-        # Validate card data exists
-        if not st.session_state.card_data:
-            st.error("❌ No card data available. Please fetch cards first.")
+        # Get currency rates
+        st.info("💱 Fetching currency conversion rates...")
+        usd_to_clp, eur_to_clp = get_currency_rates()
+        
+        if not usd_to_clp or not eur_to_clp:
+            st.error("❌ Could not fetch currency rates. Please try again later.")
         else:
-            st.info(f"📊 Analyzing {len(st.session_state.card_data)} cards...")
+            st.success(f"✅ Currency rates: 1 USD = {usd_to_clp:,.0f} CLP, 1 EUR = {eur_to_clp:,.0f} CLP")
             
-            # Get currency rates
-            st.info("💱 Fetching currency conversion rates...")
-            usd_to_clp, eur_to_clp = get_currency_rates()
+            # Update extraction metadata with currency rates
+            st.session_state.extraction_metadata.update({
+                'usd_to_clp_rate': usd_to_clp,
+                'eur_to_clp_rate': eur_to_clp,
+                'num_cards_with_prices': 0  # Will be updated below
+            })
             
-            if not usd_to_clp or not eur_to_clp:
-                st.error("❌ Could not fetch currency rates. Please try again later.")
+            # Perform analysis
+            st.info("🔍 Calculating arbitrage opportunities...")
+            results = []
+            cards_with_prices = 0
+            
+            for card in st.session_state.card_data:
+                usd_price = card.get('usd_price', 0)
+                eur_price = card.get('eur_price', 0)
+                
+                if usd_price and eur_price:
+                    cards_with_prices += 1
+                    
+                    # Convert to CLP
+                    usd_clp = usd_price * usd_to_clp
+                    eur_clp = eur_price * eur_to_clp
+                    diff = usd_clp - eur_clp
+                    diff_pct = (diff / usd_clp * 100) if usd_clp > 0 else 0
+                    
+                    # Check if this is a good opportunity (EU < USD and difference > threshold)
+                    is_opportunity = eur_clp < usd_clp and diff >= clp_threshold
+                    
+                    results.append({
+                        'Card Name': card['name'],
+                        'USD (CLP)': f"{usd_clp:,.0f}",
+                        'EUR (CLP)': f"{eur_clp:,.0f}",
+                        'Difference (CLP)': f"{diff:+,.0f}",
+                        'Difference %': f"{diff_pct:+.1f}%",
+                        'Good Opportunity': 'Yes' if is_opportunity else 'No'
+                    })
+            
+            if results:
+                st.success(f"🎉 Analysis complete! Found {len(results)} cards with price data ({cards_with_prices}/{len(st.session_state.card_data)} cards had both USD and EUR prices).")
+                
+                # Update extraction metadata with analysis parameters
+                st.session_state.extraction_metadata['num_cards_with_prices'] = cards_with_prices
+                st.session_state.extraction_metadata['clp_threshold'] = clp_threshold
+                st.session_state.extraction_metadata['analysis_date'] = pd.Timestamp.now().isoformat()
+                
+                # Sort by absolute difference for better insights
+                results_df = pd.DataFrame(results)
+                results_df['abs_diff'] = results_df['Difference (CLP)'].str.replace(',', '').str.replace('+', '').str.replace('-', '').astype(float)
+                results_df = results_df.sort_values('abs_diff', ascending=False).drop('abs_diff', axis=1)
+                
+                st.dataframe(results_df, use_container_width=True)
+                st.session_state.results = results_df
+                
+                # Show currency rates used in analysis
+                st.info(f"💱 **Currency Rates Used:** 1 USD = {usd_to_clp:,.0f} CLP | 1 EUR = {eur_to_clp:,.0f} CLP")
+                
+                # Show summary
+                good_opportunities = len([r for r in results if r['Good Opportunity'] == 'Yes'])
+                st.info(f"📈 Summary: {good_opportunities} good arbitrage opportunities found (EU < USD, ≥{clp_threshold:,.0f} CLP difference)")
+                
+                # Enable card selection interface
+                st.session_state.show_selection = True
+                
+                # Show card selection button to make it clear
+                st.success("🎯 Ready for card selection! Scroll down to Step 2: Select Cards for Watchlist")
+                
             else:
-                st.success(f"✅ Currency rates: 1 USD = {usd_to_clp:,.0f} CLP, 1 EUR = {eur_to_clp:,.0f} CLP")
-                
-                # Perform analysis
-                st.info("🔍 Calculating arbitrage opportunities...")
-                results = []
-                cards_with_prices = 0
-                
-                for card in st.session_state.card_data:
-                    usd_price = card.get('usd_price', 0)
-                    eur_price = card.get('eur_price', 0)
-                    
-                    if usd_price and eur_price:
-                        cards_with_prices += 1
-                        usd_clp = float(usd_price) * usd_to_clp
-                        eur_clp = float(eur_price) * eur_to_clp
-                        diff = usd_clp - eur_clp
-                        diff_pct = (diff / eur_clp) * 100 if eur_clp > 0 else 0
-                        
-                        results.append({
-                            'Card': card['name'],
-                            'USD': f"${usd_price:.2f}",
-                            'EUR': f"€{eur_price:.2f}", 
-                            'USD (CLP)': f"{usd_clp:,.0f}",
-                            'EUR (CLP)': f"{eur_clp:,.0f}",
-                            'Difference (CLP)': f"{diff:+,.0f}",
-                            'Difference %': f"{diff_pct:+.1f}%"
-                        })
-                
-                if results:
-                    st.success(f"🎉 Analysis complete! Found {len(results)} cards with price data ({cards_with_prices}/{len(st.session_state.card_data)} cards had both USD and EUR prices).")
-                    
-                    # Sort by absolute difference for better insights
-                    results_df = pd.DataFrame(results)
-                    results_df['abs_diff'] = results_df['Difference (CLP)'].str.replace(',', '').str.replace('+', '').str.replace('-', '').astype(float)
-                    results_df = results_df.sort_values('abs_diff', ascending=False).drop('abs_diff', axis=1)
-                    
-                    st.dataframe(results_df, use_container_width=True)
-                    st.session_state.results = results_df
-                    
-                    # Show summary
-                    arbitrage_opportunities = len([r for r in results if abs(float(r['Difference (CLP)'].replace(',', '').replace('+', '').replace('-', ''))) > 1000])
-                    st.info(f"📈 Summary: {arbitrage_opportunities} significant arbitrage opportunities found (>1000 CLP difference)")
-                    
-                else:
-                    st.warning("⚠️ No cards with complete price data found for analysis.")
+                st.warning("⚠️ No cards with complete price data found for analysis.")
 
-# --- Step 3: Display Results ---
+# --- Card Selection Interface ---
+# Always show card selection interface when results are available
 if st.session_state.results is not None:
-    st.markdown("---")
-    st.header("Step 3: Price Analysis Results")
+    # Debug information (can be removed later)
+    st.write(f"🔧 Debug: Results available, show_selection = {st.session_state.get('show_selection', False)}")
     
-    # Sort by absolute difference to show biggest arbitrage opportunities first
-    df_results = st.session_state.results.copy()
-    
-    # Convert difference strings back to numeric for sorting
-    df_results['Difference_Numeric'] = df_results['Difference (CLP)'].str.replace(',', '').str.replace('$', '').astype(float)
-    df_sorted = df_results.sort_values(by='Difference_Numeric', key=abs, ascending=False).reset_index(drop=True)
-    
-    # Remove the temporary numeric column
-    df_sorted = df_sorted.drop('Difference_Numeric', axis=1)
-    
-    def color_difference(val):
-        """Colors positive differences green and negative ones red."""
-        try:
-            numeric_val = float(val.replace(',', '').replace('$', ''))
-            if numeric_val > 0:
-                color = 'lightgreen'
-            elif numeric_val < 0:
-                color = 'lightcoral'
-            else:
-                color = 'white'
-            return f'background-color: {color}'
-        except:
-            return 'background-color: white'
+    # Automatically show card selection interface
+    try:
+        selected_cards = display_card_selection_interface(
+            st.session_state.results, 
+            st.session_state.extraction_metadata
+        )
+        
+        if selected_cards:
+            st.session_state.selected_cards = selected_cards
+            # Don't hide the interface, keep it visible for reference
+            st.success(f"✅ Successfully processed {len(selected_cards)} selected cards!")
+            
+    except Exception as e:
+        st.error(f"Error in card selection interface: {e}")
+        logging.error(f"Card selection interface error: {e}")
 
-    def color_arbitrage(val):
-        """Colors arbitrage opportunities."""
-        if val == 'Yes':
-            return 'background-color: lightblue'
-        else:
-            return 'background-color: white'
+st.divider()
 
-    # Apply styling only to existing columns
-    styled_df = df_sorted.style.apply(lambda x: [color_difference(val) if col == 'Difference (CLP)' else '' for val in x], axis=0, subset=['Difference (CLP)'])
-    
-    st.dataframe(
-        styled_df,
-        height=500,
-        use_container_width=True
-    )
-    
-    # Add summary statistics
-    st.subheader("Summary")
-    total_cards = len(df_sorted)
-    
-    # Calculate arbitrage opportunities based on significant price differences (>1000 CLP)
-    arbitrage_opportunities = len([index for index, row in df_sorted.iterrows() 
-                                 if abs(float(row['Difference (CLP)'].replace(',', '').replace('+', '').replace('-', ''))) > 1000])
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Cards Analyzed", total_cards)
-    with col2:
-        st.metric("Arbitrage Opportunities", arbitrage_opportunities)
-    with col3:
-        percentage = (arbitrage_opportunities / total_cards * 100) if total_cards > 0 else 0
-        st.metric("Opportunity Rate", f"{percentage:.1f}%")
+# --- Step 3 Content ---
+st.subheader("📋 Watchlist Management")
+
+# Always show watchlist overview section
+try:
+    display_watchlist_overview()
+except Exception as e:
+    st.error(f"Error displaying watchlist overview: {e}")
+    logging.error(f"Watchlist overview error: {e}")
+
+# Legacy section removed - functionality now integrated into the persistent step-by-step workflow above
