@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import time
@@ -9,6 +7,7 @@ from watchlist_manager import (
     display_card_selection_interface, display_watchlist_overview, 
     get_watchlist_summary, update_watchlist_prices
 )
+from auth import create_auth_manager
 import logging
 
 # Configure logging
@@ -23,6 +22,22 @@ logging.basicConfig(
 )
 
 st.set_page_config(page_title="MTG Card Arbitrage Finder", layout="wide")
+
+# Initialize authentication
+auth_manager = create_auth_manager()
+
+# Require authentication before accessing the app
+if not auth_manager.require_auth():
+    st.stop()
+
+# Display user info and logout in sidebar
+with st.sidebar:
+    user_info = auth_manager.get_user_info()
+    st.markdown(f"### 👤 Welcome, {user_info['name']}!")
+    st.markdown(f"**Username:** {user_info['username']}")
+    st.markdown("---")
+    auth_manager.logout()
+    st.markdown("---")
 
 # Initialize database
 try:

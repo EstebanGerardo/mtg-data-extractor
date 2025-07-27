@@ -1,0 +1,24 @@
+credentials:
+  usernames:
+    esteban:
+      email: eg.cortes.s@gmail.com
+      name: Esteban Cortes
+      password: admin123
+    camilo:
+      email: camilo.cueto.g@gmail.com
+      name: Camilo Cueto
+      password: admin123
+    user:
+      email: user@mtg-arbitrage.com
+      name: MTG User
+      password: user123
+
+cookie:
+  expiry_days: 30
+  key: mtg_arbitrage_auth_key_secure_2024
+  name: mtg_arbitrage_auth_cookie
+
+preauthorized:
+  emails:
+  - eg.cortes.s@gmail.com
+  - camilo.cueto.q@gmail.com
