@@ -42,7 +42,11 @@ time_period_option = st.radio(
     horizontal=True,
 )
 
-num_cards = st.number_input("How many top cards do you want to fetch?", min_value=1, max_value=100, value=100, step=1)
+col1, col2 = st.columns(2)
+with col1:
+    num_cards = st.number_input("How many top cards do you want to fetch?", min_value=1, max_value=100, value=100, step=1)
+with col2:
+    clp_threshold = st.number_input("CLP threshold for opportunities (only EU < USD)", min_value=0, value=1000, step=100, help="Minimum CLP difference to consider as an opportunity. Only cards where EU price is less than USD price will be considered.")
 
 if st.button("Get Top Cards"):
     st.session_state.results = None # Clear previous results
@@ -184,19 +188,23 @@ if st.button("Analyze Prices"):
                     
                     if usd_price and eur_price:
                         cards_with_prices += 1
-                        usd_clp = float(usd_price) * usd_to_clp
-                        eur_clp = float(eur_price) * eur_to_clp
+                        
+                        # Convert to CLP
+                        usd_clp = usd_price * usd_to_clp
+                        eur_clp = eur_price * eur_to_clp
                         diff = usd_clp - eur_clp
-                        diff_pct = (diff / eur_clp) * 100 if eur_clp > 0 else 0
+                        diff_pct = (diff / usd_clp * 100) if usd_clp > 0 else 0
+                        
+                        # Check if this is a good opportunity (EU < USD and difference > threshold)
+                        is_opportunity = eur_clp < usd_clp and diff >= clp_threshold
                         
                         results.append({
-                            'Card': card['name'],
-                            'USD': f"${usd_price:.2f}",
-                            'EUR': f"€{eur_price:.2f}", 
+                            'Card Name': card['name'],
                             'USD (CLP)': f"{usd_clp:,.0f}",
                             'EUR (CLP)': f"{eur_clp:,.0f}",
                             'Difference (CLP)': f"{diff:+,.0f}",
-                            'Difference %': f"{diff_pct:+.1f}%"
+                            'Difference %': f"{diff_pct:+.1f}%",
+                            'Good Opportunity': 'Yes' if is_opportunity else 'No'
                         })
                 
                 if results:
@@ -211,8 +219,8 @@ if st.button("Analyze Prices"):
                     st.session_state.results = results_df
                     
                     # Show summary
-                    arbitrage_opportunities = len([r for r in results if abs(float(r['Difference (CLP)'].replace(',', '').replace('+', '').replace('-', ''))) > 1000])
-                    st.info(f"📈 Summary: {arbitrage_opportunities} significant arbitrage opportunities found (>1000 CLP difference)")
+                    good_opportunities = len([r for r in results if r['Good Opportunity'] == 'Yes'])
+                    st.info(f"📈 Summary: {good_opportunities} good arbitrage opportunities found (EU < USD, ≥{clp_threshold:,.0f} CLP difference)")
                     
                 else:
                     st.warning("⚠️ No cards with complete price data found for analysis.")
@@ -237,24 +245,37 @@ if st.session_state.results is not None:
         try:
             numeric_val = float(val.replace(',', '').replace('$', ''))
             if numeric_val > 0:
-                color = 'lightgreen'
+                color = '#2d5a2d'  # Dark green for dark theme
             elif numeric_val < 0:
-                color = 'lightcoral'
+                color = '#5a2d2d'  # Dark red for dark theme
             else:
-                color = 'white'
-            return f'background-color: {color}'
+                color = 'transparent'
+            return f'background-color: {color}; color: white'
         except:
-            return 'background-color: white'
+            return 'background-color: transparent'
 
     def color_arbitrage(val):
-        """Colors arbitrage opportunities."""
+        """Colors good arbitrage opportunities."""
         if val == 'Yes':
-            return 'background-color: lightblue'
+            return 'background-color: #1e4d1e; color: #90ee90; font-weight: bold'  # Dark green bg with light green text
         else:
-            return 'background-color: white'
+            return 'background-color: transparent'
+    
+    def color_opportunity_row(row):
+        """Colors entire rows for good opportunities."""
+        if row['Good Opportunity'] == 'Yes':
+            return ['background-color: #1a3d1a; color: #e0e0e0'] * len(row)  # Dark green background for entire row
+        else:
+            return [''] * len(row)
 
-    # Apply styling only to existing columns
-    styled_df = df_sorted.style.apply(lambda x: [color_difference(val) if col == 'Difference (CLP)' else '' for val in x], axis=0, subset=['Difference (CLP)'])
+    # Apply styling - row-level coloring for good opportunities and column-level styling
+    styled_df = df_sorted.style.apply(color_opportunity_row, axis=1)
+    
+    # Apply additional column-specific styling
+    if 'Good Opportunity' in df_sorted.columns:
+        styled_df = styled_df.applymap(color_arbitrage, subset=['Good Opportunity'])
+    if 'Difference (CLP)' in df_sorted.columns:
+        styled_df = styled_df.applymap(color_difference, subset=['Difference (CLP)'])
     
     st.dataframe(
         styled_df,
@@ -266,9 +287,9 @@ if st.session_state.results is not None:
     st.subheader("Summary")
     total_cards = len(df_sorted)
     
-    # Calculate arbitrage opportunities based on significant price differences (>1000 CLP)
+    # Calculate arbitrage opportunities based on the Good Opportunity column
     arbitrage_opportunities = len([index for index, row in df_sorted.iterrows() 
-                                 if abs(float(row['Difference (CLP)'].replace(',', '').replace('+', '').replace('-', ''))) > 1000])
+                                 if row.get('Good Opportunity', 'No') == 'Yes'])
     
     col1, col2, col3 = st.columns(3)
     with col1:
