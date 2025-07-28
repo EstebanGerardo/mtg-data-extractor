@@ -107,7 +107,7 @@ def display_card_selection_interface(results_df: pd.DataFrame,
         filtered_df = filtered_df.drop('diff_numeric', axis=1)
     
     # Display filtered results count
-    st.info(f"📊 Showing {len(filtered_df)} of {len(selection_df)} cards")
+    st.info(f"▦ Showing {len(filtered_df)} of {len(selection_df)} cards")
     
     # Interactive Card Selection Table
     st.subheader("📋 Select Cards for Watchlist")
@@ -181,7 +181,7 @@ def display_card_selection_interface(results_df: pd.DataFrame,
     
     # Show selection summary
     if selected_cards:
-        st.success(f"✅ {len(selected_cards)} cards selected for watchlist")
+        st.success(f"■ {len(selected_cards)} cards selected for watchlist")
         
         # Notes section for selected cards
         st.subheader("Add Notes (Optional)")
@@ -278,7 +278,7 @@ def save_selected_cards_to_watchlist(selected_cards: List[Dict],
             # Display saved cards summary
             with st.expander("View Saved Cards"):
                 for card in saved_cards:
-                    st.write(f"✅ **{card['card_name']}** (ID: {card['card_id']})")
+                    st.write(f"■ **{card['card_name']}** (ID: {card['card_id']})")
             
             # Clear selection state
             clear_selection_state()
@@ -327,7 +327,7 @@ def display_watchlist_overview():
             """)
             return
         
-        st.success(f"📊 You are currently tracking {len(watchlist_cards)} cards")
+        st.success(f"▦ You are currently tracking {len(watchlist_cards)} cards")
         
     except Exception as e:
         st.error(f"Error getting watchlist data: {e}")
@@ -336,7 +336,7 @@ def display_watchlist_overview():
     
     # Display watchlist cards
     for card in watchlist_cards:
-        with st.expander(f"📊 {card['name']} (Added: {card['date_added'][:10]})"):
+        with st.expander(f"▦ {card['name']} (Added: {card['date_added'][:10]})"):
             col1, col2 = st.columns([3, 1])
             
             with col1:
