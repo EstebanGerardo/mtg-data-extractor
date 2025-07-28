@@ -117,14 +117,14 @@ class AuthManager:
     def require_auth(self):
         """Decorator-like function to require authentication"""
         if not self.is_authenticated():
-            # Professional login page design with purple theme
+            # Simplified login page design with purple theme
             st.markdown("""
             <style>
             .login-header {
                 background: linear-gradient(90deg, #581c87 0%, #8b5cf6 100%);
                 padding: 3rem 2rem;
                 border-radius: 12px;
-                margin-bottom: 2rem;
+                margin-bottom: 3rem;
                 color: white;
                 text-align: center;
             }
@@ -139,27 +139,67 @@ class AuthManager:
                 font-size: 1.2rem;
                 opacity: 0.9;
             }
-            .login-container {
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                padding: 2rem;
-                margin: 2rem auto;
-                max-width: 500px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            /* Purple accent for form buttons */
+            .stButton > button {
+                background: linear-gradient(90deg, #581c87 0%, #8b5cf6 100%) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-weight: 600 !important;
             }
-            .login-info {
-                background: #fef3c7;
-                border: 1px solid #f59e0b;
-                border-radius: 8px;
-                padding: 1rem;
-                margin-bottom: 1.5rem;
-                color: #92400e;
+            .stButton > button:hover {
+                background: linear-gradient(90deg, #4c1d95 0%, #7c3aed 100%) !important;
+                transform: translateY(-1px) !important;
+                box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+            }
+            /* Center the login button */
+            .stButton {
+                display: flex !important;
+                justify-content: center !important;
+                margin-top: 1rem !important;
+            }
+            /* Purple accent for input fields */
+            .stTextInput > div > div > input {
+                border-color: #8b5cf6 !important;
+                border-width: 2px !important;
+            }
+            .stTextInput > div > div > input:focus {
+                border-color: #581c87 !important;
+                box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
+                outline: none !important;
+            }
+            /* Purple accent for input labels */
+            .stTextInput > label {
+                color: #8b5cf6 !important;
+                font-weight: 600 !important;
+            }
+            /* Form styling with purple theme (primary color handled by config.toml) */
+            div[data-testid="stForm"] {
+                border-radius: 12px !important;
+            }
+            /* Center form with limited width */
+            .login-form {
+                max-width: 400px;
+                margin: 0 auto;
+                padding: 0 20px;
+            }
+            /* Override Streamlit's default form width */
+            .login-form .stTextInput > div > div > input {
+                max-width: 100% !important;
+            }
+            .login-form .stForm {
+                max-width: 400px !important;
+                margin: 0 auto !important;
+            }
+            /* Make the form container narrower */
+            div[data-testid="stForm"] {
+                max-width: 400px !important;
+                margin: 0 auto !important;
             }
             </style>
             """, unsafe_allow_html=True)
             
-            # Professional login header
+            # Simplified login header
             st.markdown("""
             <div class="login-header">
                 <h1>■ MTG Singles</h1>
@@ -167,24 +207,14 @@ class AuthManager:
             </div>
             """, unsafe_allow_html=True)
             
-            # Login container
-            st.markdown('<div class="login-container">', unsafe_allow_html=True)
-            st.markdown("### ○ Access Required")
-            st.markdown("""
-            <div class="login-info">
-                <strong>▶ Authentication Required</strong><br>
-                Please log in with your credentials to access the MTG Singles Card Management system.
-            </div>
-            """, unsafe_allow_html=True)
+            # Create a simple login form using Streamlit columns for centering
+            col1, col2, col3 = st.columns([1, 2, 1])  # Center column is twice as wide
             
-            # Display login form with explicit placement
-            st.markdown("##### ○ Please enter your username and password")
-            
-            # Create a simple login form using Streamlit widgets
-            with st.form("login_form"):
-                username_input = st.text_input("▦ Username", placeholder="Enter your username")
-                password_input = st.text_input("▦ Password", type="password", placeholder="Enter your password")
-                login_button = st.form_submit_button("■ Login", use_container_width=True)
+            with col2:  # Use the center column
+                with st.form("login_form"):
+                    username_input = st.text_input("▦ Username", placeholder="Enter your username")
+                    password_input = st.text_input("▦ Password", type="password", placeholder="Enter your password")
+                    login_button = st.form_submit_button("Login")
                 
                 if login_button:
                     if username_input and password_input:
@@ -230,8 +260,6 @@ class AuthManager:
             
             # If we reach here, user hasn't logged in yet
             st.stop()
-            
-            st.markdown('</div>', unsafe_allow_html=True)
         
         return True
 
